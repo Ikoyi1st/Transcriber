@@ -19,6 +19,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -109,6 +110,7 @@ textarea {
 }
 
 .field input,
+.field select,
 .transcript-box {
   background: #fff;
   border: 1px solid #d8cfbf;
@@ -121,6 +123,11 @@ textarea {
 .transcript-box {
   min-height: 280px;
   resize: vertical;
+}
+
+.field input:disabled {
+  background: #f3eee5;
+  color: #7b7b72;
 }
 
 .status-pill {

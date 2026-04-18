@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { exportTranscriptAsDocument, exportTranscriptAsPdf, exportTranscriptAsText } from "./utils/exporters";
-import { transcribeAudio } from "./services/transcription";
+import { transcribeAudio, transcribeAudioWithPuter } from "./services/transcription";
 import "./styles.css";
 
 type AudioAsset = {
@@ -12,6 +12,14 @@ type AudioAsset = {
 
 const DEFAULT_API_URL = import.meta.env.VITE_TRANSCRIPTION_API_URL ?? "/api/transcribe";
 const RECORDING_EXTENSION = "webm";
+const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
+const PUTER_MODELS = [
+  { label: "GPT-4o Mini Transcribe", value: "gpt-4o-mini-transcribe" },
+  { label: "GPT-4o Transcribe", value: "gpt-4o-transcribe" },
+  { label: "Whisper-1", value: "whisper-1" },
+];
+
+type TranscriptionProvider = "puter" | "custom-backend";
 
 function formatDuration(milliseconds: number) {
   const totalSeconds = Math.floor(milliseconds / 1000);
@@ -40,6 +48,8 @@ export default function App() {
   const timerRef = useRef<number | null>(null);
 
   const [transcriptionUrl, setTranscriptionUrl] = useState(DEFAULT_API_URL);
+  const [provider, setProvider] = useState<TranscriptionProvider>("puter");
+  const [puterModel, setPuterModel] = useState("gpt-4o-mini-transcribe");
   const [selectedAudio, setSelectedAudio] = useState<AudioAsset | null>(null);
   const [transcript, setTranscript] = useState("");
   const [languageHint, setLanguageHint] = useState("");
@@ -135,6 +145,12 @@ export default function App() {
       return;
     }
 
+    if (file.size > MAX_IMPORT_BYTES) {
+      window.alert("Please choose an audio file that is 200 MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
     setSelectedAudio({
       file,
       mimeType: file.type,
@@ -151,19 +167,26 @@ export default function App() {
       return;
     }
 
-    if (!transcriptionUrl.trim()) {
+    if (provider === "custom-backend" && !transcriptionUrl.trim()) {
       window.alert("Enter the transcription server URL before transcribing.");
       return;
     }
 
     try {
       setIsBusy(true);
-      setStatusMessage("Uploading audio for transcription...");
-      const response = await transcribeAudio({
-        audio: selectedAudio,
-        endpoint: transcriptionUrl.trim(),
-        language: languageHint.trim() || undefined,
-      });
+      setStatusMessage(provider === "puter" ? "Opening Puter transcription..." : "Uploading audio for transcription...");
+      const response =
+        provider === "puter"
+          ? await transcribeAudioWithPuter({
+              audio: selectedAudio,
+              language: languageHint.trim() || undefined,
+              model: puterModel,
+            })
+          : await transcribeAudio({
+              audio: selectedAudio,
+              endpoint: transcriptionUrl.trim(),
+              language: languageHint.trim() || undefined,
+            });
 
       setTranscript(response.text);
       setStatusMessage("Transcription complete.");
@@ -206,9 +229,36 @@ export default function App() {
       </section>
 
       <section className="panel-grid">
-        <article className="panel">
+        {/* <article className="panel">
           <h2>Transcription Server</h2>
-          <p className="helper-copy">Point this to the backend endpoint that forwards your audio files to OpenAI.</p>
+          <p className="helper-copy">
+            Choose Puter for browser-based transcription with no API key, or use your own backend endpoint.
+          </p>
+          <label className="field">
+            <span>Provider</span>
+            <select onChange={(event) => setProvider(event.target.value as TranscriptionProvider)} value={provider}>
+              <option value="puter">Puter.js (Recommended)</option>
+              <option value="custom-backend">Custom backend</option>
+            </select>
+          </label>
+          {provider === "puter" ? (
+            <>
+              <label className="field">
+                <span>Puter model</span>
+                <select onChange={(event) => setPuterModel(event.target.value)} value={puterModel}>
+                  {PUTER_MODELS.map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="helper-copy">
+                Puter may prompt the user to sign in. Their docs describe this as a user-pays model with no API key or backend required.
+              </p>
+              <p className="helper-copy">The app accepts uploads up to 200 MB. Puter is the better option for larger files.</p>
+            </>
+          ) : null}
           <label className="field">
             <span>API endpoint</span>
             <input
@@ -218,6 +268,7 @@ export default function App() {
               placeholder="https://your-server.com/api/transcribe"
               type="url"
               value={transcriptionUrl}
+              disabled={provider !== "custom-backend"}
             />
           </label>
           <label className="field">
@@ -231,7 +282,12 @@ export default function App() {
               value={languageHint}
             />
           </label>
-        </article>
+          {provider === "custom-backend" ? (
+            <p className="helper-copy">
+              The app accepts uploads up to 200 MB, but the current OpenAI transcription API still limits a single direct transcription request to 25 MB unless backend chunking is added.
+            </p>
+          ) : null}
+        </article> */}
 
         <article className="panel">
           <h2>Live Audio</h2>
@@ -258,6 +314,7 @@ export default function App() {
               ? `Selected: ${selectedAudio.name} (${Math.round(selectedAudio.size / 1024)} KB)`
               : "No audio file selected yet."}
           </p>
+          <p className="helper-copy">Maximum imported file size: 200 MB.</p>
         </article>
 
         <article className="panel panel-wide">

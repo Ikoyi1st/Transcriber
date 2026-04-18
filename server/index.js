@@ -10,7 +10,8 @@ import OpenAI from "openai";
 dotenv.config();
 
 const app = express();
-const maxUploadBytes = 25 * 1024 * 1024;
+const maxUploadBytes = 200 * 1024 * 1024;
+const openAiDirectLimitBytes = 25 * 1024 * 1024;
 const upload = multer({
   limits: { fileSize: maxUploadBytes },
   storage: multer.memoryStorage(),
@@ -54,6 +55,14 @@ app.post("/api/transcribe", upload.single("file"), async (request, response) => 
     return;
   }
 
+  if (uploadedFile.size > openAiDirectLimitBytes) {
+    response.status(413).json({
+      error:
+        "This server now accepts uploads up to 200 MB, but the current OpenAI transcription API only accepts files up to 25 MB per request. Use Puter for large files or add backend chunking first.",
+    });
+    return;
+  }
+
   const tempFile = path.join(os.tmpdir(), `upload-${Date.now()}${extension}`);
 
   try {
@@ -82,7 +91,7 @@ app.post("/api/transcribe", upload.single("file"), async (request, response) => 
 app.use((error, _request, response, _next) => {
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
     response.status(413).json({
-      error: `Audio file is too large. The current transcription limit is ${Math.round(maxUploadBytes / (1024 * 1024))} MB.`,
+      error: `Audio file is too large. The server accepts files up to ${Math.round(maxUploadBytes / (1024 * 1024))} MB.`,
     });
     return;
   }
